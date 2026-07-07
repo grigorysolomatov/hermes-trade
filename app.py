@@ -89,11 +89,28 @@ app.layout = dbc.Container([
 
 def fetch_data(symbol, period, interval):
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval)
+        df = yf.download(symbol, period=period, interval=interval, progress=False)
 
         if df.empty:
             return None, None, None, None, None
+
+        # Flatten MultiIndex columns for yfinance 1.5.1+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        # Reset index to make datetime a column for Plotly
+        df = df.reset_index()
+
+        # Rename the datetime column to "Datetime" for consistency
+        if 'Date' in df.columns:
+            df.rename(columns={'Date': 'Datetime'}, inplace=True)
+        elif 'Datetime' not in df.columns and len(df.columns) > 0:
+            # The first column should be the datetime index
+            df.rename(columns={df.columns[0]: 'Datetime'}, inplace=True)
+
+        # Set Datetime as index for compatibility with existing chart code
+        if 'Datetime' in df.columns:
+            df.set_index('Datetime', inplace=True)
 
         current_price = df['Close'].iloc[-1]
         prev_price = df['Close'].iloc[0]
